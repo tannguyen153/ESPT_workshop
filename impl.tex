@@ -1,0 +1,114 @@
+In this section we present a runtime implementation that can efficiently schedule the task graph described in Sec.~\ref{sec:model}.
+At a high level, the runtime is constituted of three major modules: task management system, communication handler, and task scheduler as shown in Fig.~\ref{fig:impl}. 
+The runtime can be configured to run on a dedicated processor core in order to keep it responsive.
+
+\begin{figure}[htb]
+\centering
+\includegraphics[width=.6\textwidth]{figures/impl.pdf}
+\caption{Runtime implementation}
+\label{fig:impl}
+\end{figure}
+
+
+\begin{figure*}[htb]
+\centering
+\subfloat[When direct communication is not available, data are asynchronously fetched through hosts
+\label{fig:handler}]{
+\includegraphics[width=0.42\textwidth]{figures/handler.pdf}
+}\hspace{1cm}
+\subfloat[The handler supports direct communication if hardware allows
+\label{fig:handler_direct}]{
+\includegraphics[width=0.42\textwidth]{figures/handler_dma.pdf}
+}
+\caption{Implementation of the inter-process communication handler}
+\end{figure*}
+
+\subsection{Task Management System}
+Tasks can be created as soon as input data are produced.
+The task management system listens for requests from existing tasks to create new tasks.
+%A task may own data.
+Upon the completion of a task, the task management system may write data back (if necessary) before destroying the task.
+If the original data is located in a different locale, the communication handlers will write the data back asynchronously.
+For example, if the task executed on an accelerator while the original data resides in host memory, data will be written back to the host, overlapping with other tasks' computations.
+
+\subsection{Communication handlers}
+Once a task has been created, it will be pushed to the {\em fetching queue} by the task management system.
+The communication handler periodically pulls tasks from this queue and fetches their input data (parcels).
+Depending on the available memory resource, a certain number of tasks in the {\em fetching queue} will be served at a time.
+Parcels can be either located in the same process or a remote process.
+In the former case, the handler can just pass a pointer if described by the programmer in the task's input.
+Otherwise the handler allocates a buffer, packs the data into the buffer and hands it to the task.
+In the latter case, parcels can be routed through the hosts or moved directly between accelerators if supported by the hardware.
+
+\subsubsection{Routing parcels through hosts}
+%On Intel's KNC-based nodes, we use COI (Coprocessor Offload Infrastructure)\samW{citation for COI??}.
+
+We employ GASNet to implement the inter-process communication.
+The process of fetching parcels from a remote process is shown in Fig.~\ref{fig:handler}.
+To fetch remote data for a task, the corresponding GASNet process issues an active message (remote procedure call) to request data from the process that owns the data (1).
+This procedure looks for the appropriate data at the remote process.
+If the data resides in accelerator memory, the procedure also has to pull the data up before sending it (2).
+We employ the data transfer primitive provided by the accelerator's vendor to move data to the host.
+In particular, on compute nodes with NVIDIA GPUs, we use CUDA stream to move data between host and GPUs.
+To avoid blocking the runtime, we do not use any synchronization.
+Instead, the communication handler periodically tests the completion of communication activities.
+Once the memory transfer from accelerator completes (3), the data can be sent to the requester using a one-sided {\em put} operation (4).
+Once the remote GASNet process finishes the remote data transfer, it issues an active message to push the data to the accelerator of the requester (if necessary) and notify the requester when data is available for the task.
+All of these activities run asynchronously, and we use a polling mechanism to avoid blocking the runtime.
+The reverse process of writing back data produced by the task is similar to the fetching process, and it is also handled asynchronously.
+
+
+
+% JohnB: removed since this is unimplemented future work. No sense in cluttering up the pre-results narrative.
+\subsubsection{Pulling parcels directly}
+When the hardware supports direct communication among accelerators (e.g. via shared PCIe or NVlink), the communication handler can be configured to communicate data on the direct path.
+Fig.~\ref{fig:handler_direct} shows that the communication process has been simplified significantly if direct communication is available.
+Indeed, the data owner process only needs to respond to parcel requests with the address of the parcel.
+Specifically, within a compute node if peer access among accelerators is enabled via a PCIe bus or NVLink connection, GASNet processes exchange information about a shared memory segment at the beginning of the program.
+Then they only need to transfer an offset of the parcel, which allows the recipient to pull the data directly.
+%In the case of accelerators located on different compute nodes, parcels can still bypass the host memory using RDMAs.
+%Specifically, data can be transferred to the NIC without being staged to host memory.
+%The RDMA support in RambutanAcc is still under development though (using MPICH as the communication backend).
+%In the future, we can also use GASNet as the communication backend when it supports this feature.
+
+
+\subsection{Task Scheduler}
+Tasks become {\em ready} and pushed in the host's {\em ready queue} once all of their data have been fetched.
+Each host process runs a task scheduler to dispatch ready tasks to workers. On the GPU, there are
+dedicated private task queues per SM and thread block pair. The host's scheduler is responsible
+for draining the ready queue into available slots on the finitely-sized worker queues.
+
+%\subsubsection{Task Buffer}
+%To keep workers busy, the scheduler frequently checks the runnable task queue and the status of workers.
+%However, the task scheduler may not be very responsive since the communication handlers also run on the same processor core.
+%Thus, each worker has a private task queue with a few slots.
+%The scheduler fills up these slots while the workers keep popping tasks and executing.
+%To reduce synchronization overheads, we use a lock-free implementation for this single producer-multiple consumers scheme.
+
+\subsubsection{Accelerator workers using CUDA persistent kernel}
+Since the host worker implementation is straightforward, we now present the implementation of accelerator workers on GPUs.
+At the beginning, the runtime launches a CUDA kernel to set up workers on the GPUs' SMs and execute assigned tasks.
+Once the kernel is launched, CUDA thread blocks find out what SM they are mapped to by the CUDA runtime.
+Accessing this information is possible by inserting PTX code to read a special register that holds the SM ID.
+%As shown in Fig.~\ref{fig:kernel}, 
+We keep only a certain number of thread blocks per SM (this number can be set via an environment variable and the default value is 1).
+The reason is that thread blocks run until the program completes and the CUDA runtime co-runs only a limited number of thread blocks on the same SM.
+In practice we often use two thread blocks on an SM (if supported) to hide the DRAM latency.
+The alive thread blocks will be divided into workers.
+Each worker is a group of thread blocks, acting as the new CUDA grid for scheduled tasks.
+
+%\begin{figure}[htb]
+%\centering
+%\includegraphics[width=.35\textwidth]{figures/kernel_init.pdf}
+%\caption{The persistent kernel selects only a limited number of thread blocks per SM (green color). The default number of thread blocks per SM is 1. 
+%In practice, however, we set it to 2 to hide DRAM latency.
+%The alive thread blocks are divided into workers to execute tasks.}
+%\label{fig:kernel}
+%\end{figure}
+
+Now each thread block knows which worker it belongs to and where to find tasks to execute.
+Once there are ready tasks and an available worker slot, the scheduler may offload a task (a function and arguments) to task buffers on the GPUs.
+Then the scheduler picks a worker and notifies it by writing a signal to the GPU using the non-blocking copy {\em cudaMemcpyCpyAsync}.
+If the worker is busy at the time, it will read the signal and execute the corresponding task later.
+Once the task finishes, the worker notifies the scheduler.
+Since a CUDA kernel cannot explicitly send data to the host, we have to use UVM (unified virtual memory).

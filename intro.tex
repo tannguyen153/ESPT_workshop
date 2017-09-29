@@ -1,0 +1,63 @@
+It is very likely that exascale systems will be armed with powerful accelerators and/or many-core processors.%~\cite{ASCRExascaleLethin, exascaleRoadMap}. 
+On such systems, performance will heavily depend on how compute kernels harness each accelerator or many-core processor, which often requires aggressive, low-level kernel optimizations that destroy portability across systems with different processor architectures.
+Specifically, the programmer must perform different sets of potential optimizations on the same compute kernel for different architectures.
+This problem is challenging especially for domain programmers, given that they must also optimize the communication among multiple accelerators of the same compute node as well as across nodes.
+
+This paper presents a solution that allows the programmer to explore effective optimizations for an application on a given hardware without aggressive modifications to the source code. 
+Specifically, we exploit task-based parallelism that can abstract away complicated hardware details associated with low-level accelerator architectures.
+%We extend the programming interface of {\em Rambutan}~\cite{rambutanWebsite}, which 
+We provide an interface to construct dynamic task dependency graphs that unfold as the program executes. 
+Tasks can execute as soon as their {\em true} data dependencies are satisfied, thus avoiding many types of over-synchronization (e.g. barrier, wait\_all, etc.) present in traditional programming models.
+
+We also develop a task-based runtime that can dynamically schedule both coarse and fine-grain tasks.
+Each task of the input graph can be scheduled to run on a {\em worker} of the runtime, which can be either a group of CPU cores, an accelerator, or a group of accelerator cores.
+%\cyC{"group of accelerator cores" would be clearer than "a partition of an accelerator", which hasn't been defined yet}
+Our runtime handles the communication among tasks automatically -- in particular, data required by a task can be produced by other tasks running anywhere else on the system.
+%, i.e. on a CPU or accelerator on a local or remote compute node.
+%The programmer has a choice to select the communication path, 
+The runtime then transparently moves data to where the dependent task will execute, and handles communication in the background so that communication can be overlapped with computation of other runnable tasks.
+%\sout{Not only can data move, but tasks can also migrate among different memory address spaces via work stealing.
+%Specifically idle workers can find chance to steal tasks from other workers, enabling dynamic load balancing}.
+Dependent data can either be routed through the host or moved directly between accelerators when hardware support is available.
+%\cyC{why not utilize direct device to device transfer when the hardware is available?  what is the benefit from giving the programmer a choice?}
+
+%{\em RambutanAcc} 
+Our runtime currently supports NVIDIA's GPUs.%and the first generation of Intel's Xeon Phi co-processor (KNC).
+%In this paper, we present the GPU supported version as the GPU code (e.g. CUDA) is substantially different from conventional code running on the CPU.
+With a simple programming model, it removes the programming burden of launching CUDA kernels and moving data between the host and GPUs.
+Each task can be specified as a conventional routine parallelized across a thread team.
+%In typical CUDA code, running multiple types of tasks requires launching multiple independent kernels, with little flexibility in when tasks of different types may be executed.
+%In contrast, 
+%{\em RambutanAcc} 
+The runtime can be configured to launch a single {\em persistent CUDA kernel} that can service multiple requests from a task scheduler running on the host, thus avoiding the overhead of multiple kernel launches during execution.
+The persistent kernel partitions available streaming multiprocessors (SMs) of a GPU into separate workers, each of which have the flexibility to asynchronously service tasks of different types, increasing task parallelism.
+%This method provides much more flexibility to overlap communication with useful computational work.
+%{\em RambutanAcc} 
+The runtime is also equipped with a communication handler to service data transfer requests across GPUs and between the host and GPUs.
+This handler utilizes CUDA streams and works asynchronously with the persistent kernel.
+The handler can also move data directly among the GPUs via direct memory access (DMA).
+%\footnote{For MIC-based workers, we use Intel's COI (co-processor offload infrastructure) to implement the on-node handler.}
+%For off-node requests, we use GASNet~\cite{Bonachea:2002:gasnet}, a one-sided communication library % , to implement the communication handler.
+that provides non-blocking data transfer and low-latency signaling mechanisms. % , allowing inter-process communication to be overlapped with computations efficiently.
+
+We evaluate our tool with two HPC benchmarks: sparse Cholesky factorization and a 3D stencil solver for Laplace's equation.
+%\samW{needs to be consistent with sec5... missing ML code}
+The results show that the performance improves significantly and meets the performance level of our painstakingly hand-optimized code variants.
+%{\em RambutanAcc} also hides communication costs that cannot be avoided.\samW{how is this different than the previous sentence?}
+In addition, for sparse cholesky factorization, having multiple workers on a single GPU allows compute throughput to be increased at low programming cost. 
+We hope this result will encourage further research to develop and tune sparse kernels for co-scheduling fine-grained tasks on GPUs.
+
+%The contributions of the paper are three-fold.
+%\begin{itemize}
+%\item A task-based programming model that can reveal a significant amount of dynamic parallelism in an application
+%\item A runtime system that supports a rich set of task scheduling and communication handling policies for learning the impact of various optimizations on the performance
+%\item A thorough experimental study using four HPC benchmarks 
+%\end{itemize}
+
+The rest of this paper is organized as follows.
+Sec.~\ref{sec:motivation} presents the overview of a hybrid system, which is increasingly popular in practice.
+In Sec.~\ref{sec:model}, we present the task-based programming model.
+Followed by this section is Sec.~\ref{sec:impl}, which discusses the implementation of the associated runtime.
+Sec.~\ref{sec:results} shows experimental results.
+Sec.~\ref{sec:related} presents related work.
+We conclude the paper in Sec.~\ref{sec:conclusion}.

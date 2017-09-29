@@ -1,0 +1,20 @@
+The benefit of using a task-based execution model on traditional multi-core processors has been recognized by the HPC community for years, e.g. Cilk/Cilk++~\cite{cilk,BlumofeJoKu95}, Charm/Charm++~\cite{charm++}, Bamboo~\cite{bamboo}, DPLASMA\cite{dplasma}, OMPSs~\cite{ompss}, and Habanero-C MPI~\cite{Chatterjee:2013:HCMPI}.
+However, the question of whether a task dependency graph program with many fine-grained tasks can run efficiently on an accelerator (e.g. GPU) has not yet been thoroughly answered.
+As a result, many current runtimes for GPUs schedule each single task on the whole GPU (e.g. Legion~\cite{legion} and CNC-HC~\cite{cnc-hc}).
+As the number of cores per accelerator increases quickly, this limitation puts the programmer under the pressure of optimizing their kernels so they can scale linearly as the accelerator architecture evolves.
+
+Recently more research has been focusing on launching a CUDA kernel on a portion of the GPU.
+In~\cite{fillNRetreat}, Wu et al. presented a technique called {\em fill and retreat}, which allows a CUDA kernel to run on a group of selected SMs.
+With this technique the programmer can efficiently bundle multiple CUDA kernels to run on a single GPU at a time.
+Abdelfattah et al. also used a similar technique to batch small CUDA kernels in a Cholesky factorization program in order to improve the throughput~\cite{batchedCholesky}.
+Our solution relies on a task scheduler to factor the scheduling policy out of the application program.
+As a result, the programmer can take the benefit of fine-grained scheduling at a very small amount of programming cost.
+
+%Multi-GPU programming is also an important support because the memory capacity of each individual GPU is very limited.
+%There are MPI implementations that provide this support, e.g. MPI-ACC~\cite{mpiacc, mpiacc1} and Mvapich~\cite{mvapich2gpu}.
+%However, with these tools the programmer has to explicitly move data.
+%We provide a dataflow programming model that supports distributed-memory architectures, allowing the runtime to move data across memory address spaces transparently.
+%In addition, the data movement is non-blocking and independent of computations, overlapping communication with computation.
+
+%Our runtime is general-purpose.
+%Thus, it supports a wide range of applications, as opposed to other domain-specific runtimes such as MAGMA~\cite{MAGMA}, Physics~\cite{physics}, and Patus~\cite{patus}.

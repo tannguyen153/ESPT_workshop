@@ -1,0 +1,138 @@
+\documentclass{llncs}
+
+%\pagestyle{plain}
+\usepackage{bibnames}
+\usepackage{booktabs} % For formal tables
+\usepackage{caption}
+\usepackage[caption=false]{subfig}
+%\usepackage{subcaption}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+
+
+\newcommand{\myfootnote}[1]{
+    \renewcommand{\thefootnote}{}
+    \footnotetext{\scriptsize#1}
+    \renewcommand{\thefootnote}{\arabic{footnote}}
+}
+
+\lstset{ %
+  backgroundcolor=\color{white},   % choose the background color; you must add \usepackage{color} or \usepackage{xcolor}
+  language=C,
+  basicstyle=\scriptsize\ttfamily,
+  %basicstyle=\footnotesize,        % the size of the fonts that are used for the code
+  breakatwhitespace=false,         % sets if automatic breaks should only happen at whitespace
+  breaklines=true,                 % sets automatic line breaking
+  captionpos=b,                    % sets the caption-position to bottom
+  commentstyle=\color{mygreen},    % comment style
+  deletekeywords={...},            % if you want to delete keywords from the given language
+  escapeinside={\%*}{*)},          % if you want to add LaTeX within your code
+  extendedchars=true,              % lets you use non-ASCII characters; for 8-bits encodings only, does not work with UTF-8
+  frame=single,                    % adds a frame around the code
+  keepspaces=true,                 % keeps spaces in text, useful for keeping indentation of code (possibly needs columns=flexible)
+  keywordstyle=[1]\color{blue},       % keyword style
+  keywordstyle=[2]\color{mymauve},       % keyword style
+  morekeywords=[2]{*, },            % if you want to add more keywords to the set
+  numbers=left,                    % where to put the line-numbers; possible values are (none, left, right)
+  numbersep=5pt,                   % how far the line-numbers are from the code
+  numberstyle=\tiny\color{mygray}, % the style that is used for the line-numbers
+  rulecolor=\color{black},         % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. comments (green here))
+  showspaces=false,                % show spaces everywhere adding particular underscores; it overrides 'showstringspaces'
+  showstringspaces=false,          % underline spaces within strings only
+  showtabs=false,                  % show tabs within strings adding particular underscores
+  stepnumber=1,                    % the step between two line-numbers. If it's 1, each line will be numbered
+  stringstyle=\color{mymauve},     % string literal style
+  tabsize=1,                       % sets default tabsize to 2 spaces
+  title=\lstname,                   % show the filename of files included with \lstinputlisting; also try caption instead of title
+  xleftmargin=10pt,
+}
+
+% Copyright
+%\setcopyright{none}
+%\setcopyright{acmcopyright}
+%\setcopyright{acmlicensed}
+%\setcopyright{rightsretained}
+%\setcopyright{usgov}
+%\setcopyright{usgovmixed}
+%\setcopyright{cagov}
+%\setcopyright{cagovmixed}
+
+\newcommand{\tanN}[1] {{\color{red}{TanN}}: {\color{red}{#1}}}
+\newcommand{\cyC}[1] {{\color{green}{CyC}}: {\color{green}{#1}}}
+\newcommand{\johnB}[1] {{\color{blue}{JohnB}}: {\color{blue}{#1}}}
+\newcommand{\bryceL}[1] {{\color{cyan}{BryceL}}: {\color{cyan}{#1}}}
+\newcommand{\samW}[1] {{\color{violet}{SamW}}: {\color{violet}{#1}}}
+\newcommand{\johnS}[1] {{\color{orange}{JohnS}}: {\color{organe}{#1}}}
+\newcommand{\daveD}[1] {{\color{purple}{DaveD}}: {\color{purple}{#1}}}
+
+\begin{document}
+\title{A DAG-based Programming Tool For Highly Efficient Codes on Accelerators}
+
+\author{
+Tan Nguyen,
+John Bachan,
+Bryce Lelbach,
+Samuel Williams,
+John Shalf,\\
+David Donofrio, and Cy Chan}
+\institute{Lawrence Berkeley National Laboratory, USA\myfootnote{Email: tannguyen@lbl.gov. Bryce Lelbach recently moved to NVIDIA.}
+}
+
+\maketitle
+
+\begin{abstract}
+Recently, heterogeneous architectures have gained traction in HPC. 
+Systems with deep and complex hardware hierarchy and equipped with accelerators each having thousands of cores are increasingly commonplace. 
+Optimizing application codes for scalability on such hardware design is extremely challenging, since it requires effective management of the massive thread pool and the ability to balance the workload and hide communication cost among threads/accelerators.
+To alleviate these labor intensive jobs, we present a solution based on task parallelism, abstracting away many hardware details associated with sophisticated accelerator architectures such as GPUs. 
+We also develop a runtime system that can schedule both coarse and fine-grain tasks on NVIDIA's GPUs.
+Using two HPC benchmarks, we demonstrate the effectiveness of our tool without intrusively modifying the source code.
+\end{abstract}
+
+
+\section{Introduction}
+\label{sec:intro}
+\input{intro}
+
+\section{Heterogeneous Node - a Notable Design Trend}
+\label{sec:motivation}
+\input{motivation}
+
+\section{Programming Model}
+\label{sec:model}
+\input{model}
+
+\section{Implementation}
+\label{sec:impl}
+\input{impl}
+
+
+\section{Experimental Results}
+\label{sec:results}
+\input{results}
+
+\section{Related work}
+\label{sec:related}
+\input{related}
+
+\section{Conclusion}
+\label{sec:conclusion}
+\input{conclusion}
+
+\section*{Acknowledgments}
+This material is based upon work supported by the Advanced Scientific Computing Research Program in the U.S. Department of Energy, Office of Science, under  Award Number DE-AC02-05CH11231.
+RambutanAcc and application codes were developed on TiDA, a workstation housed at LBNL, with GPUs provided by NVIDIA.
+We would like to thank Paul Hargrove for his great help on GASNet.
+
+%\input{artifact}
+
+\bibliographystyle{splncs03}
+\bibliography{ref} 
+
+
+\end{document}

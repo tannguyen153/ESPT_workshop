@@ -1,0 +1,348 @@
+\subsection{Experimental Testbed}
+In this section, we employ the task-based runtime to study the impact of various code optimizations.
+We take two benchmarks commonly used in science and engineering: sparse Cholesky factorization and 3D Stencil.
+%For sparse Cholesky Factorization, we develop our own CUDA kernels for the sparse matrix multiply update $C = \alpha (A \cdot B) + \beta C$ where $B$ and $C$ are sparse and $A$ is either sparse or dense.
+%In these kernels, we perform many optimization techniques such as memory coalescing and spatial tiling.
+%We also employ a warp-based thread reduction implementation that minimizes memory accesses.
+
+We use up to three K80 GPUs.
+A K80 GPU pairs two GPU devices each having 2496 CUDA cores organized into 13 SMs.
+The whole K80-based system is equipped with 24GB DRAM with up to 480 GB/s memory bandwidth.
+%For cluster-level optimizations, we run our code on the K20x GPUs on Titan.
+%Each K20x is about a half of a K80 in terms of core count and memory bandwidth.
+We use the {\tt nvcc} compiler version 7.0 and sm\_35 capability for CUDA codes and the gcc compiler for codes running on the host.
+%For experiments on multiple GPUs (on the same node and across nodes), we run experiments on NVIDIA P100 GPUs (the newest generation named Pascal) on SummitDev at Oak Ridge National Laboratory.
+%Each Pascal GPU consists of 3584 cores and supports 720 GB/s memory bandwidth.
+%A SummitDev compute node consists of four Pascal GPUs.
+%These nodes are connected by the InfiniBand interconnect.
+%Nvcc 8.0 and sm\_60 are used for experiments on Pascal GPUs.
+We use GASNet for communication among the GPUs. 
+
+
+\subsection{Scheduling tasks on SMs of a GPU}
+We first study the significance of optimizations at the GPU level using sparse Cholesky factorization.
+For this study we use a GPU of the Kepler K80 card.
+
+\subsubsection{Sparse Cholesky Factorization}
+Sparse Cholesky Factorization A= $LL^T$, where A is a sparse and symmetric positive-definite matrix,
+appears in many scientific and engineering problems.
+Depending on the sparsity pattern of the input matrix, many sparse representations can be used.
+In this paper we employ the CSC (Compressed Sparse Column) format. 
+The input matrix is organized as a list of "non-zero" tiles, each including lists of non-zero elements and their row and column indices.
+The factorization operation is comprised of three smaller kernels: {\em factor}, {\em solve}, and {\em update}.
+These computations on CSC tiles and their data dependencies can be represented by a DAG as we previously showed in Fig.~\ref{fig:cholesky}. 
+For very sparse matrices, this DAG may consist of many small tasks.
+Thus, this is a perfect application to evaluate the benefit of fine-grained task scheduling in increasing the accelerator throughput.
+We place data on the host's DRAM and execute {\em factor} and {\em solve} on the host's worker.
+The compute-intensive {\em update} kernel is executed on the GPU workers.
+The runtime automatically streams data required by this kernel to the GPU's DRAM and streams the results back.
+
+%An interesting path to explore is the tradeoff between coarse and fine-grained scheduling policies.  
+%For sparse Cholesky, the matrix is represented by many small CSC tiles.\samW{the previous sentence repeats the one}
+%Thus, even a small problem size can result in many tasks.
+We implemented two code variants, which differ from each other in the method of task execution used (refer to Section~\ref{sec:task-def} for {\em task type} descriptions).
+The first code variant implements the {\em Update} phase with {\em type-3} task to launch the sparse matrix multiply kernel on the whole GPU, and hence the name {\em CUDA Launch}.
+The other code variant is called {\em persistent kernel}, since it employs {\em type-2} task, which can be scheduled on a group of SMs by the persistent kernel.
+Fig.~\ref{fig:coarseFine} shows results of sparse Cholesky under two scheduling policies.
+It can be seen that {\em persistent kernel} outperforms the coarse-grained {\em CUDA Launch} policy.
+This can be explained as follows.
+Each CSC tile is very small (e.g. 32$\times$32), making it hard to map computations efficiently to many CUDA cores.
+Thus, it may not be possible to scale a task to all available SMs of a GPU.
+We observe that for many input matrices tasks run more efficiently after reducing the number of SMs per worker by a factor of 2$\times$ or 4$\times$.
+Since there are many tasks that can be runnable at a time, the scheduler can keep all SMs busy at very small overhead.
+Fig~\ref{fig:nWorkers} shows the optimal number of workers on a K80 GPU for sparse Cholesky Factorization when the degree of sparsity of the input matrix varies.
+If the sparse matrix is filled with many tasks we have more parallelism, allowing us to configure the GPUs with more workers.
+Note that we picked these three numbers to represent wide ranges of sparsity, and the actual number in practice may fall somewhere in these ranges. 
+
+
+\begin{figure}[htb]
+\centering
+\subfloat[Since tile size is small (32$\times$32), co-scheduling tasks on the same GPU with the persistent kernel improves performance
+\label{choleskySche}
+]{
+\includegraphics[width=0.35\textwidth]{figures/choleskyScheResults.pdf}
+} \hspace{1cm}
+\subfloat[If there is enough parallelism (matrix is filled with more non-zeros), increasing \#workers may increase performance
+\label{fig:nWorkers}
+]{
+\includegraphics[width=0.35\textwidth]{figures/nWorkers.pdf}
+}
+\caption{Sparse Cholesky Factorization: Left: the persistent kernel with two workers/GPU improves the performance. For this experiment, the degrees of sparsity are low (under 30\%). Right: for matrices with higher degrees of sparsity, increasing the number of workers  may further improve the performance}
+%\samW{note left vs. right;  for left, what is the sparsity???  where does the matrix come from???}}
+\label{fig:coarseFine}
+\end{figure}
+
+The lesson learned from this study is that fine-grained scheduling can be very helpful if we have a DAG with many small tasks, which cannot effectively utilize the whole GPU.
+The persistent kernel also allows running multiple task types simultaneously, taking advantage of additional task parallelism compared to sequentially launching uniform accelerator kernels, all at a small programming cost.
+Using these methods, the programmer can obtain high compute throughput on GPUs without complicating the application algorithm, which is an important capability since sparse representations are very common in practice.
+
+%\subsubsection{Viola-Jones Face Recognition}
+%\samW{is there a citation for this code/algorithm}
+%We next study the impact of dynamic task scheduling in balancing the workload among SMs of a GPU.
+%For this study we use the Viola-Jones face detection kernel~\cite{facedetection1, facedetection2}, an important module in many applications such as security surveillance.
+%The Viola-Jones face detection algorithm detects faces by scanning a rectangular window of pixels over the image where it looks for features of a human face. 
+%If a window contains a significant number of these features, it is accepted (considered to contain a face).
+%Since face size varies, the window is scaled a number of times and the scanning process is repeated. 
+%To reduce the number of features that each window needs to check, the window passes through a number of different stages. 
+%Early stages have fewer features to check and are easier to pass, whereas later stages have more features and are more selective. 
+%At each stage, if the window's features do not exceed a threshold, the window is immediately rejected, skipping further stage processing.
+
+
+%\begin{figure}[htb]
+%\centering
+%\includegraphics[width=0.35\textwidth]{figures/faceRecognition.pdf}
+%\caption{Viola-Jones Face Recognition: Although the warp scheduling implemetation boosts up performance of the face detection algorithm via eliminating thread divergence, there remains substantial load imbalance among warps. The persistent kernels allows tasks to be dynamically scheduled to workers. Within each worker, task's workload is further split dynamically to warps. The performance of the persistent kernel is very close to that of the hand optimized code}
+%%Balance the face searching\samW{what is FPS?  I assume up is good... i.e. FPS is a throughput rather than time metric}}
+%\label{faceRecognition}
+%\end{figure}
+
+
+
+
+%\begin{figure*}[htb]
+%\centering
+%%\begin{subfigure}[b]{0.45\textwidth}
+%\subfloat[A and B dependencies on each replication layer
+%\label{deps}]{
+%\includegraphics[width=0.45\textwidth]{figures/cannon0.pdf}
+%}
+%%\begin{subfigure}[b]{0.37\textwidth}
+%\subfloat[Results are reduced to the original layer
+%\label{dataspace}]{
+%\includegraphics[width=0.37\textwidth]{figures/cannon1.pdf}
+%}
+%\caption{Computing $C= \alpha A * B + \beta C$ using the 2.5D Cannon's matrix multiplication algorithm given the input matrices are already replicated and aligned. 
+%The DAG partitions matrix C and the step space of the algorithm.
+%Task Id is a triple where the first two numbers represent the coordinates of a C partition and the last is the step number of the algorithm. 
+%Fig.~\ref{deps} shows two subsets of the graph to illustrate two types of data dependecies required to compute C.}
+%\label{fig:25DCannon}
+%\end{figure*}
+
+
+%We use a few code variants presented in \cite{facedetection_dws}.
+%For this application, it is straightforward to exploit parallelism among search windows.
+%Each CUDA thread block is responsible for a fixed number of windows, which will be further distributed to threads within the thread block.
+%In this paper we call this code variant {\em CUDA-Basic}.
+%Since the number of instructions per window depends on the input, the impact of thread divergence is expected to be significant.
+%Thus, we also employ a {\em CUDA-Static Warp Scheduling} version which allows 32 threads in a warp to share a window (and thus they perform the same number of instructions).
+%We then port this code on our runtime using {\em type-2} tasks, hence we call it {\em persistent kernel}.
+%We expect to improve the performance further by balancing the workload among these warps.
+%Finally, we run a hand-optimized code variant previously developed in \cite{facedetection_dws}.
+%This variant effectively embeds the task scheduler into the kernel code and has capabilities similar to our runtime's scheduler,
+%but at lower cost since the task scheduler is specialized and runs on the GPU.
+
+%Fig.~\ref{faceRecognition} shows the performance of all code variants.
+%{\em CUDA-Basic} performs poorly as expected.
+%Under this na{\"i}ve strategy, a few threads progress through more feature detection stages while most threads reject their window early and start with a new window, causing thread divergence.
+%%since there is no chance to detect a face in their current windows.
+%Since the CUDA runtime runs the 32 threads of a warp in lock-step, the diverged threads must be serialized.
+%%\samW{previous sentence is unclrear...  Are you saying the naive code has a thread divergence problem?}
+%This explains why {\em CUDA-Static Warp Scheduling} improves the performance significantly.
+%However, there remains significant load imbalance among warps.
+
+%With {\em persistent kernel}, windows are distributed to workers dynamically.
+%Specifically, we configure the runtime with 26 workers, with one thread block per worker and two workers per SM.
+%The scheduler running on the host keeps assigning blocks of windows to these workers.
+%In order to hide the scheduling latency, we configure the task buffer of each worker with multiple slots.
+%While each worker is processing its current window, the scheduler can offload other windows to the remaining slots.
+%In this experiment, each block takes about 50$\mu$s to finish, whereas the offloading cost is around 10$\mu$s.
+%Thus, configuring the task buffer with two slots is sufficient.
+%Fig.~\ref{faceRecognition} shows that {\em persistent kernel} outperforms {\em CUDA-Static Warp Scheduling} by 1.35$\times$.
+%All the performance improvement can be attributed to the capability of balancing computations among SMs of the GPU.
+%The {\em persistent kernel} version achieves 90 percent of the hand-optimized version at substantially less programming complexity.
+%%\cyC{replace X percent above with the actual number}
+%% The {\em CUDA-Hand Optimized} version runs even faster.
+%The additional performance of the hand-tuned version is due to reduced overhead from embedding the scheduling logic directly into the application source code.
+%%\samW{where did the CUDA versions of the code come from?  Did you write them all?  if not, cite source}
+%
+\subsection{Scheduling tasks on multiple GPUs}
+\subsubsection{3D Stencil}
+\label{subsec:3DStencil_1node}
+%\samW{3D stencil is an ill-defined term... is this a 7-point, constant coefficient laplacian?  Are you doing a smoother with a RHS?  are you assuming periodic BCs?  or constant(node/vertex centerd) boundaries?}
+On multiple GPUs we pick {\em 3D Stencil}, an iterative solver for Laplace's equation in three dimensions.
+{\em 3D Stencil} iterates over a 3D mesh, updating data elements using values from six nearest neighbors.
+3D stencil is a memory bandwidth bound application. 
+Thus, using GPUs can boost up the performance significantly.
+%The DAG for this application is similar to that shown in Fig.~\ref{fig:taskGraph}, except for the number of dimensions.
+%In particular, each task is associated with a data partition with up to six ghost regions.
+%A task can be run when the previous iteration on this data partition finishes and it pulls all the needed ghost regions from neighboring tasks.
+
+
+%\begin{figure}[htb]
+%\centering
+%\includegraphics[width=.47\textwidth]{figures/taskGraph.pdf}
+%\caption{A directed acyclic graph for a 2D stencil code (which shows the concepts of a 3D Stencil task graph). The graph partitions the data space and the iteration space. Data space is divided into parcels, and the color represents the ownership mapping function (tasks to data parcels).}
+%Tasks are fireable as soon as data dependencies are satisfied.}
+%\label{fig:taskGraph}
+%\end{figure}
+
+
+
+
+\begin{figure}[htb]
+\centering
+\includegraphics[width=0.7\textwidth]{figures/stencil_single_node_tida.pdf}
+\caption{Strong scaling study of 3D stencil on a single compute node with six Kepler GPUs (3 K80 cards) connected via a shared PCIe bus. Problem size $512^3$.}
+\label{fig:stencil_single_nodes}
+\end{figure}
+
+A challenge for this code is that the communication cost is relatively significant.
+Not only does the GPU implementation introduce extra cost of transferring data among host and the GPUs, it also puts more pressure on the communication by improving the computation rate due to its high memory bandwidth.
+Thus, it is interesting to use the task-based runtime to study the impact of hiding/lowering such communication costs.
+For this study, we implemented four code variants.
+The first variant, {\em MPI-Basic} uses blocking CUDA transfers to communicate between the host and GPU, and it uses MPI for communication among hosts.
+We port this code to our runtime using {\em type-3} tasks, which offload the same CUDA kernel in {\em MPI-Basic} to the whole GPU.
+However, it performs a non-blocking kernel launch with a CUDA stream given by the runtime, allowing the scheduler to manage ready tasks while servicing communication for other tasks.
+Using the same task graph, we configure the communication handler of the runtime system with and without direct communication among the GPUs, and hence the names {\em DAG} and {\em DAG-noDMA}, respectively.
+The {\em Linear} code variant shuts off all communication in {\em MPI-Basic}, and thus does not produce a correct result.
+This variant illustrates the hypothetical performance if {\em all} communication costs were hidden.
+
+Fig.~\ref{fig:stencil_single_nodes} shows the strong scaling performance of four code variants.
+We can easily see that the communication has a notable impact on the scalability of {\em MPI-Basic}.
+Under this circumstance, hiding communication is always effective whether or not we route data through the host.
+{\em DAG} and {\em DAG-noDMA} run at the same rate on two GPUs.
+However, on six GPUs we no longer have enough computation to hide the communication cost of the indirect copy.
+This explains why {\em DAG} substantially outperforms {\em DAG-noDMA}.
+%\samW{Be careful on the previous 2 paragraphs.  There may not be enough NVLink bricks to connect 4 GPUs to a POWER8}
+
+
+
+
+%\begin{figure}[htb]
+%\centering
+%\includegraphics[width=0.49\textwidth]{figures/cannon_tida.pdf}
+%\caption{2.5D Cannon on two K80s (four GPU devices)}
+%\label{cannon_onnode}
+%\end{figure}
+
+
+
+%\subsubsection{2.5D Cannon Matrix Multiply}
+%Although sparse representations are widely used in practice, dense matrix operations also have a significant share in many scientific and engineering areas.
+%As a result, we employ a dense matrix multiplication operation $C = \alpha (A \cdot B) + \beta C$ to evaluate our runtime.
+%This is a compute bound kernel, and the GPU architecture is very well suited for the computation. 
+%There are many algorithms for the matrix multiply operation, and we use a well-known extension of the standard 2D Cannon's algorithm called {\em Communication Avoiding} or 2.5D Cannon~\cite{25Dcannon}. 
+%Under the original 2D Cannon's algorithm, the available tasks are organized into a {\em T=PxP} mesh, partitioning each of the three matrices A, B, and C into blocks.
+%These partitions are first aligned using a skewing operation.
+%The algorithm then performs P computation steps accumulating the C partition using the rotated A and B partitions.
+%The communication avoiding algorithm replicates the input matrices by a factor of L using an additional task dimension.
+%The algorithm broadcasts input data to layers in this dimension to compute the traditional Cannon with T/$\sqrt(L^3)$ steps then reduces the results back to the first layer.
+
+%On a single node, we do not have enough GPUs to replicate the mesh of an MPI program.
+%Thus, we use a 2D variant of the Cannon algorithm {\em MPI-Basic-2D}.
+%To have fair comparisons, we also run the {\em DAG} variant in 2D form where there is no advantage of avoiding communication.
+%This variant includes {\em DAG-2D-noDMA} and {\em DAG-2D}.
+%To study the total impact of three optimizations (communication overlap, avoiding, and direct communication) we employ {\em DAG-2.5D}.
+
+%Figure~\ref{cannon_onnode} shows the performance of these variants as the matrix size varies.
+%It can be seen that the communication overhead is very high in this experiment.
+%Generally, matrix multiply operations have high compute intensity;
+%however, on GPUs these operations can be processed more quickly than the communication.
+%Since communication dominates, the overlapping technique in {\em DAG-2D-noDMA} is not effective.
+%The performance is even worse due to the overhead of over-decomposing the problem.
+%However, things completely change with direct communication among the GPUs, which
+%reduces communication to a level where overlap becomes effective again.
+%We can see that the performance is boosted significantly with {\em DAG-2D}.
+%{\em DAG-2.5D} is the most interesting case because in addition to the benefit of communication-avoidance,
+%% This is not really the original communication avoiding technique because
+%we also use ``virtualized'' GPUs (via tasks and workers) to replicate the matrix.
+%Thus, we actually realize the benefits from both techniques simultaneously.
+%The performance of this code variant is very close to the {\em Linear} performance where all communication is shut off.
+
+
+%\subsection{Scheduling tasks at the cluster level}
+%In Sec.~\ref{subsec:3DStencil_1node}, communication optimization techniques (i.e. communication overlap and GPU direct access) realize modest performance improvement when the NVLink connection is available.
+%We now extend the experiment in Fig.~\ref{stencil_single_node_summit} to multiple compute nodes on SummitDev.
+%As previously described, a SummitDev node consists of four Pascal GPUs.
+%These nodes are connected via an InfiniBand interconnect.
+%We reuse 3 code variants in the previous study: {\em MPI-Basic}, {\em DAG}, and {\em Linear}. 
+%In this study, we expect the communication to be increased  due to the off-node communication.
+%Thus, we also develop a hand optimized code variant called {\em MPI-HandOpt}.
+%Like {\em DAG}, this code also over-decomposes the data space into smaller partitions (which called {\em parcel} in {\em DAG}).
+%Unlike {\em DAG}, this code statically schedules the CUDA kernel launch and the communication on ghost cells.
+%Specifically, after launching a non-blocking kernel to update data elements in a partition (let's say A), the code handles communication for another partition B.
+%When the CUDA kernel and data communication both complete, the code launches kernel on partition B and services communication for partition A.
+%%\samW{is this a missing subsection? or is communication hiding supposed to be a subsubsection???}
+%\cyC{yeah, this looks like an extraneous subsection}
+
+
+%\begin{figure}[htb]
+%\centering
+%\includegraphics[width=0.49\textwidth]{figures/stencil_multiple_nodes_summit.pdf}
+%\caption{Strong scaling results of 3D-Stencil on multiple nodes of SummitDev. Problem size is fixed at 1024x1024x2048.}
+%\label{fig:stencil_multiple_nodes}
+%\end{figure}
+%
+
+%Fig.~\ref{fig:stencil_multiple_nodes} shows the performance of all code variants.
+%As expected, we observe higher impact of communication on the performance.
+%In this study, we do strong scaling with 1D decomposition.
+%Thus, as the number of GPUs increases the amount of communication data remains the same while the number of Flops computed on each GPU decreases.
+%{\em DAG} and {\em MPI-HandOpt} can tolerate this relative increase in communication overhead via overlapping both host-host and host-GPU communication with computation.
+%On 8 GPUs, these code variants meet the {\em Linear} performance.
+%On 16 and 32 GPUs, although the amount of computation is not sufficient to hide all communication, the performance improvement remains significant.
+%Compared to {\em MPI-HandOpt}, {\em DAG} is slightly slower.
+%The performance gap can be explained by the scheduling overhead, which increases when tasks become smaller.
+%In real-world scientific problems, we expect tasks to be much larger since each data element is associated with multiple physical variables. 
+%Under this scenario, we expect the performance gap to be small as it is on 8 GPUs in Fig.~\ref{fig:stencil_multiple_nodes}.
+
+
+
+
+%\subsubsection{Communication hiding}
+%We now extend the experiment to multiple GPUs.
+%In this experiment, we evaluate the benefit of hiding the communication overheads among the GPUs.
+%To this end, we configure the runtime in two modes: {\em no overlap} and {\em overlap}.
+%The former uses blocking CUDA memory copy routines to transfer data between host and GPUs while the latter uses non-blocking variants.
+%Since the fine-grained scheduler is not compatible with blocking mode (the persistent kernel runs to completion while blocking routines cannot proceed until all previously submitted CUDA kernels have completed), we use the coarse-grained scheduling policy for both the blocking and non-blocking modes.
+
+%Fig.~\ref{overlap} shows results of three applications under two communication modes.
+%In this study, we do not replicate the input matrices of the 2.5D Cannon's algorithm because the communication avoiding technique may interfere with the communication overlap.
+%We will study this interference later in Sec~\ref{subsec:CAvsOlap}.
+%It can be seen in Fig.~\ref{overlap} that on three applications {\em overlap} always outperforms {\em no overlap}.
+%In Cholesky, we place data on the host and stream them to GPUs to perform the compute-intensive {\em update} kernel.
+%Thus, even on one GPU, communication arises.
+%\footnote{Although we do not show results of 2.5D Cannon and 3D Stencil on one GPU, it's worth noting that computing on one GPU does not incur communication cost since we initially place data on the GPU.
+%As a result, we do not observe performance improvement when running these two applications on only one GPU.}
+%On multiple GPUs, we realize notable performance improvement via overlapping communcation with computation.
+%The overall time reduction is 10\% more or less.
+%For Stencil, however, we see a higher speedup (up to 1.85$\times$) due to the following reason.
+%At a small scale 1D decomposition works best since it does not require the costly packing and unpacking operations.
+%However, with a 1D decomposition scheme the amount of communication does not decrease as the number of GPUs increases.
+%Thus, the more GPUs the higher communication relative to computation, resulting in a better improvement due to overlap.
+%Unlike 3D Stencil, experiments on the other two applications use a 2D decomposition scheme.
+%Thus, the communication over computation ratio does not change much as the number of GPU increases.
+
+%\begin{figure*}[htb]
+%\centering
+%\includegraphics[width=0.9\textwidth]{figures/overlap.pdf}
+%\caption{Hiding communication automatically via overlap
+%\samW{How much potential was there for overlap in the first place?}
+%%\samW{When strong scaling, there is a region where it might be viable.}
+%\samW{When weak scaling, you may always be outside the range where overlap is viable.}
+%}
+%\label{overlap}
+%\end{figure*}
+
+%\begin{figure}[htb]
+%\centering
+%\includegraphics[width=0.49\textwidth]{figures/CA_4096.pdf}
+%\caption{2.5D Cannon on 16 GPUs using small matrices (N=4096). The communication avoiding technique results in many task configurations. For good configurations (e.g. \{64, 4\}), there is not much room for the communication overlap. However, for poor configurations (e.g. \{1024, 4\}) the overlap technique does a good job in further increasing the performance}
+%\label{CA_4096}
+%\end{figure}
+
+%\subsubsection{Interference between communication avoiding and hiding}
+%\label{subsec:CAvsOlap}
+%Now let's study the behavior of {\em overlap} when the communication avoiding technique is enabled.
+%Fig.~\ref{CA_4096} shows the run time of the 2.5D Cannon program when performing matrix multiplication on 16 GPUs.
+%We can see that replicating matrices substantially reduces the run time.
+%Notable examples are  \{64, 4\} compared to \{64, 1\} and \{256, 4\} compared to \{256, 1\}.
+%If most of the data communication can be avoided, there is not much left to hide.
+%However, the number of these optimal replication configurations is very small compared to the combination of task and replication spaces.
+%As a result, the programmer may need to brute force many potential configurations to find the best one.
+%This requirement is costly and time consuming.
+%Luckily the overlapping technique can work with communication avoiding within the same application.
+%Thus, if the programmer does not pick the best replication configuration, he/she can rely on the communication overlap to realize comparable performance.
+%For example, the {\em overlap} performance on configurations \{128, 2\}, \{256, 4\}, or the most wanted \{64, 1\} is  acceptable. 
+%We can see that there are many of such configurations, allowing the programmer to guess one easily.
+
