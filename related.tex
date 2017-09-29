@@ -1,6 +1,6 @@
 The benefit of using a task-based execution model on traditional multi-core processors has been recognized by the HPC community for years, e.g. Cilk/Cilk++~\cite{cilk,BlumofeJoKu95}, Charm/Charm++~\cite{charm++}, Bamboo~\cite{bamboo}, DPLASMA\cite{dplasma}, OMPSs~\cite{ompss}, and Habanero-C MPI~\cite{Chatterjee:2013:HCMPI}.
-However, the question of whether a task dependency graph program with many fine-grained tasks can run efficiently on an accelerator (e.g. GPU) has not yet been thoroughly answered.
-As a result, many current runtimes for GPUs schedule each single task on the whole GPU (e.g. Legion~\cite{legion} and CNC-HC~\cite{cnc-hc}).
+However, the question of whether a task dependency graph program with many fine-grain tasks can run efficiently on an accelerator (e.g. GPU) has not yet been thoroughly answered.
+As a result, many current runtimes for GPUs schedule each individual task on the whole GPU (e.g. Legion~\cite{legion} and CNC-HC~\cite{cnc-hc}).
 As the number of cores per accelerator increases quickly, this limitation puts the programmer under the pressure of optimizing their kernels so they can scale linearly as the accelerator architecture evolves.
 
 Recently more research has been focusing on launching a CUDA kernel on a portion of the GPU.
