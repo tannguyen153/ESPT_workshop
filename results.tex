@@ -4,7 +4,6 @@ We take two benchmarks commonly used in science and engineering: sparse Cholesky
 %For sparse Cholesky Factorization, we develop our own CUDA kernels for the sparse matrix multiply update $C = \alpha (A \cdot B) + \beta C$ where $B$ and $C$ are sparse and $A$ is either sparse or dense.
 %In these kernels, we perform many optimization techniques such as memory coalescing and spatial tiling.
 %We also employ a warp-based thread reduction implementation that minimizes memory accesses.
-
 We use up to three K80 GPUs.
 A K80 GPU pairs two GPU devices each having 2496 CUDA cores organized into 13 SMs.
 The whole K80-based system is equipped with 24GB DRAM with up to 480 GB/s memory bandwidth.
@@ -20,10 +19,8 @@ We use GASNet for communication among the GPUs.
 
 
 \subsection{Scheduling tasks on SMs of a GPU}
-We first study the significance of optimizations at the GPU level using sparse Cholesky factorization.
+We first study the significance of optimizations at the GPU level using {\em \bf sparse Cholesky factorization}.
 For this study we use a GPU of the Kepler K80 card.
-
-\subsubsection{Sparse Cholesky Factorization}
 Sparse Cholesky Factorization A= $LL^T$, where A is a sparse and symmetric positive-definite matrix,
 appears in many scientific and engineering problems.
 Depending on the sparsity pattern of the input matrix, many sparse representations can be used.
@@ -156,10 +153,10 @@ Using these methods, the programmer can obtain high compute throughput on GPUs w
 %%\samW{where did the CUDA versions of the code come from?  Did you write them all?  if not, cite source}
 %
 \subsection{Scheduling tasks on multiple GPUs}
-\subsubsection{3D Stencil}
+%\subsubsection{3D Stencil}
 \label{subsec:3DStencil_1node}
 %\samW{3D stencil is an ill-defined term... is this a 7-point, constant coefficient laplacian?  Are you doing a smoother with a RHS?  are you assuming periodic BCs?  or constant(node/vertex centerd) boundaries?}
-On multiple GPUs we pick {\em 3D Stencil}, an iterative solver for Laplace's equation in three dimensions.
+On multiple GPUs we pick {\em \bf 3D Stencil}, an iterative solver for Laplace's equation in three dimensions.
 {\em 3D Stencil} iterates over a 3D mesh, updating data elements using values from six nearest neighbors.
 3D stencil is a memory bandwidth bound application. 
 Thus, using GPUs can boost up the performance significantly.
