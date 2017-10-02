@@ -1,7 +1,7 @@
 It is very likely that exascale systems will be armed with powerful accelerators and/or many-core processors.%~\cite{ASCRExascaleLethin, exascaleRoadMap}. 
 On such systems, performance will heavily depend on how compute kernels harness each accelerator or many-core processor, which often requires aggressive, low-level kernel optimizations that destroy portability across systems with different processor architectures.
 Specifically, the programmer must perform different sets of potential optimizations on the same compute kernel for different architectures.
-This problem is challenging especially for domain programmers, given that they must also optimize the communication among multiple accelerators of the same compute node as well as across nodes.
+This problem is challenging especially for domain programmers, given that they must also optimize the communication among multiple accelerators within each compute node as well as across nodes.
 
 This paper presents a solution that allows the programmer to explore effective optimizations for an application on a given hardware without aggressive modifications to the source code. 
 Specifically, we exploit task-based parallelism that can abstract away complicated hardware details associated with low-level accelerator architectures.
@@ -10,9 +10,9 @@ We provide an interface to construct dynamic task dependency graphs that unfold 
 Tasks can execute as soon as their {\em true} data dependencies are satisfied, thus avoiding many types of over-synchronization (e.g. barrier, wait\_all, etc.) present in traditional programming models.
 
 We also develop a task-based runtime that can dynamically schedule both coarse and fine-grain tasks.
-Each task of the input graph can be scheduled to run on a {\em worker} of the runtime, which can be either a group of CPU cores, an accelerator, or a group of accelerator cores.
+Each task of the input graph can be scheduled to run on a {\em worker}, which can be either a group of CPU cores, an accelerator, or a group of accelerator cores.
 %\cyC{"group of accelerator cores" would be clearer than "a partition of an accelerator", which hasn't been defined yet}
-Our runtime handles the communication among tasks automatically -- in particular, data required by a task can be produced by other tasks running anywhere else on the system.
+Our runtime handles communication among tasks automatically -- in particular, data required by a task can be produced by other tasks running anywhere else on the system.
 %, i.e. on a CPU or accelerator on a local or remote compute node.
 %The programmer has a choice to select the communication path, 
 The runtime then transparently moves data to where the dependent task will execute, and handles communication in the background so that communication can be overlapped with computation of other runnable tasks.
@@ -46,13 +46,20 @@ The results show that the performance improves significantly and meets the perfo
 %{\em RambutanAcc} also hides communication costs that cannot be avoided.\samW{how is this different than the previous sentence?}
 In addition, for sparse cholesky factorization, having multiple workers on a single GPU allows compute throughput to be increased at low programming cost. 
 We hope this result will encourage further research to develop and tune sparse kernels for co-scheduling fine-grained tasks on GPUs.
-
 %The contributions of the paper are three-fold.
 %\begin{itemize}
 %\item A task-based programming model that can reveal a significant amount of dynamic parallelism in an application
 %\item A runtime system that supports a rich set of task scheduling and communication handling policies for learning the impact of various optimizations on the performance
 %\item A thorough experimental study using four HPC benchmarks 
 %\end{itemize}
+Our original contributions are as follows:
+\vspace{-0mm}
+\begin{enumerate}
+	\item We present a DAG-based programming model that provides a portable programming abstraction layer to enable high performance on accelerated HPC architectures.
+	\item We present an asynchronous execution model that provides optimization of fine-grained task scheduling on accelerators (with multiple independent workers per accelerator) and automatic communication-computation overlap between tasks.
+	\item We demonstrate the effectiveness of using a persistent accelerator kernel in the context of a fine-grained task based scheduling.
+	\item We show the benefit of utilizing direct accelerator-to-accelerator communication hardware support in the context of a task-based programming and execution model.
+\end{enumerate}
 
 The rest of this paper is organized as follows.
 Sec.~\ref{sec:motivation} presents the overview of a hybrid system, which is increasingly popular in practice.
